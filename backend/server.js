@@ -8,16 +8,21 @@ require("dotenv").config();
 const app = express();
 
 /* ================== PASSPORT ================== */
-require("./config/passport");
-app.use(passport.initialize());
+/* ================== PASSPORT ================== */
+const hasGoogleOAuth =
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_SECRET;
 
+if (hasGoogleOAuth) {
+  require("./config/passport");
+  app.use(passport.initialize());
+  console.log("✅ Passport Google OAuth initialized");
+} else {
+  console.log("⚠️ Google OAuth skipped (missing env vars)");
+}
 /* ================== MIDDLEWARE ================== */
 app.use(cors({
-  origin: [
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "https://your-railway-domain.up.railway.app" // replace later
-  ],
+  origin: true,
   credentials: true,
 }));
 
