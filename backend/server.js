@@ -8,7 +8,6 @@ require("dotenv").config();
 const app = express();
 
 /* ================== PASSPORT ================== */
-/* ================== PASSPORT ================== */
 const hasGoogleOAuth =
   process.env.GOOGLE_CLIENT_ID &&
   process.env.GOOGLE_CLIENT_SECRET;
@@ -20,6 +19,7 @@ if (hasGoogleOAuth) {
 } else {
   console.log("⚠️ Google OAuth skipped (missing env vars)");
 }
+
 /* ================== MIDDLEWARE ================== */
 app.use(cors({
   origin: true,
@@ -50,6 +50,10 @@ app.use("/api/blogs", require("./routes/blogRoutes"));
 /* ================== FRONTEND ROUTES ================== */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend", "index.html"));
+});
+
+app.get("/about", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend", "about.html"));
 });
 
 app.get("/contact", (req, res) => {
@@ -86,9 +90,15 @@ app.get("/project-details", (req, res) => {
 
 /* ================== 404 HANDLER ================== */
 app.use((req, res) => {
-  res.status(404).json({
-    error: "Route Not Found"
-  });
+  // If API route not found
+  if (req.originalUrl.startsWith("/api")) {
+    return res.status(404).json({
+      error: "API Route Not Found"
+    });
+  }
+
+  // If normal frontend route not found
+  res.status(404).sendFile(path.join(__dirname, "../frontend", "index.html"));
 });
 
 /* ================== DATABASE CONNECTION ================== */
