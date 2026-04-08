@@ -21,7 +21,6 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   socialLogin("googleLogin", "http://localhost:5000/api/auth/google");
-  socialLogin("facebookLogin", "http://localhost:5000/api/auth/facebook");
 
   /* =====================
      OAUTH REDIRECT HANDLER
