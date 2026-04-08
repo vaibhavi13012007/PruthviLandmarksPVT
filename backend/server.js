@@ -8,87 +8,66 @@ require("dotenv").config();
 
 const app = express();
 
-/* ================== ENV CHECK ================== */
+/* ================== ENV ================== */
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
 
 /* ================== PATHS ================== */
 const uploadsPath = path.join(__dirname, "uploads");
-const frontendPath = path.join(__dirname, "../frontend");
+
+// safer frontend path detection
+let frontendPath = path.join(__dirname, "../frontend");
+if (!fs.existsSync(frontendPath)) {
+  frontendPath = path.join(__dirname, "frontend");
+}
 const frontendIndex = path.join(frontendPath, "index.html");
 
 /* ================== ENV VALIDATION ================== */
 if (!MONGO_URI) {
-  console.error("❌ MONGO_URI is missing in environment variables");
+  console.error("❌ MONGO_URI missing in .env");
   process.exit(1);
 }
 
-/* ================== DEBUG LOGS ================== */
-console.log("🔍 NODE_ENV:", process.env.NODE_ENV || "development");
+/* ================== DEBUG ================== */
 console.log("🔍 PORT:", PORT);
-console.log("🔍 MONGO_URI exists:", !!MONGO_URI);
-console.log(
-  "🔍 MONGO_URI preview:",
-  MONGO_URI ? MONGO_URI.substring(0, 30) + "..." : "NOT FOUND"
-);
+console.log("🔍 Mongo URI exists:", !!MONGO_URI);
 console.log("🔍 Frontend path:", frontendPath);
 console.log("🔍 Frontend exists:", fs.existsSync(frontendPath));
-console.log("🔍 index.html exists:", fs.existsSync(frontendIndex));
 
 /* ================== PASSPORT ================== */
-const hasGoogleOAuth =
-  process.env.GOOGLE_CLIENT_ID &&
-  process.env.GOOGLE_CLIENT_SECRET;
-
-if (hasGoogleOAuth) {
-  require("./config/passport");
-  app.use(passport.initialize());
-  console.log("✅ Passport Google OAuth initialized");
-} else {
-  console.log("⚠️ Google OAuth skipped (missing env vars)");
+try {
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    require("./config/passport");
+    app.use(passport.initialize());
+    console.log("✅ Passport initialized");
+  } else {
+    console.log("⚠️ Google OAuth skipped");
+  }
+} catch (err) {
+  console.error("❌ Passport error:", err.message);
 }
 
 /* ================== MIDDLEWARE ================== */
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ================== ENSURE UPLOADS FOLDER ================== */
+/* ================== UPLOADS ================== */
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true });
   console.log("📁 uploads folder created");
 }
-
-/* ================== STATIC FOLDERS ================== */
 app.use("/uploads", express.static(uploadsPath));
 
+/* ================== FRONTEND ================== */
 if (fs.existsSync(frontendPath)) {
   app.use(express.static(frontendPath));
-  console.log("✅ Frontend static folder served");
-} else {
-  console.log("⚠️ Frontend folder not found, skipping static serving");
+  console.log("✅ Serving frontend");
 }
 
-/* ================== HEALTH ROUTES ================== */
-app.get("/", (req, res) => {
-  if (fs.existsSync(frontendIndex)) {
-    return res.sendFile(frontendIndex);
-  }
-  return res.status(200).send("API is running...");
-});
-
+/* ================== HEALTH ================== */
 app.get("/health", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Server is healthy",
-    uptime: process.uptime(),
-  });
+  res.json({ success: true, message: "Server running" });
 });
 
 /* ================== API ROUTES ================== */
@@ -102,8 +81,9 @@ app.use("/api/stats", require("./routes/publicStatsRoutes"));
 app.use("/api/supervisor/blogs", require("./routes/supervisorBlogRoutes"));
 app.use("/api/blogs", require("./routes/blogRoutes"));
 
-/* ================== FRONTEND ROUTES ================== */
-const frontendRoutes = [
+/* ================== SPA ROUTES ================== */
+const routes = [
+  "/",
   "/about",
   "/contact",
   "/projects",
@@ -112,25 +92,23 @@ const frontendRoutes = [
   "/register",
   "/profile",
   "/add-project",
-  "/project-details",
+  "/project-details"
 ];
 
-frontendRoutes.forEach((route) => {
+routes.forEach(route => {
   app.get(route, (req, res) => {
     if (fs.existsSync(frontendIndex)) {
       return res.sendFile(frontendIndex);
+    } else {
+      return res.status(404).send("Frontend not found");
     }
-    return res.status(404).send("Frontend not found");
   });
 });
 
 /* ================== 404 HANDLER ================== */
 app.use((req, res) => {
   if (req.originalUrl.startsWith("/api")) {
-    return res.status(404).json({
-      success: false,
-      error: "API Route Not Found",
-    });
+    return res.status(404).json({ error: "API Not Found" });
   }
 
   if (fs.existsSync(frontendIndex)) {
@@ -140,47 +118,46 @@ app.use((req, res) => {
   return res.status(404).send("Page Not Found");
 });
 
-/* ================== GLOBAL ERROR HANDLER ================== */
+/* ================== ERROR HANDLER ================== */
 app.use((err, req, res, next) => {
-  console.error("❌ Server Error:", err.stack || err.message);
+  console.error("❌ Error:", err.message);
 
   if (req.originalUrl.startsWith("/api")) {
     return res.status(err.status || 500).json({
       success: false,
-      error: err.message || "Internal Server Error",
+      error: err.message || "Internal Server Error"
     });
   }
 
-  res.status(err.status || 500).send("Internal Server Error");
+  res.status(err.status || 500).send("Server Error");
 });
 
-/* ================== DATABASE + SERVER START ================== */
+/* ================== START SERVER ================== */
 const startServer = async () => {
   try {
     await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 10000
     });
 
     console.log("✅ MongoDB Connected");
 
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running: http://localhost:${PORT}`);
     });
+
   } catch (err) {
-    console.error("❌ MongoDB Connection Failed:", err.message);
+    console.error("❌ DB Error:", err.message);
     process.exit(1);
   }
 };
 
 startServer();
 
-/* ================== HANDLE PROCESS ERRORS ================== */
-process.on("unhandledRejection", (err) => {
-  console.error("❌ Unhandled Rejection:", err.stack || err.message);
-  process.exit(1);
+/* ================== PROCESS ERRORS ================== */
+process.on("unhandledRejection", err => {
+  console.error("❌ Unhandled Rejection:", err.message);
 });
 
-process.on("uncaughtException", (err) => {
-  console.error("❌ Uncaught Exception:", err.stack || err.message);
-  process.exit(1);
+process.on("uncaughtException", err => {
+  console.error("❌ Uncaught Exception:", err.message);
 });
